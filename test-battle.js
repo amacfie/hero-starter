@@ -11,7 +11,7 @@ See README.md for more information.
 */
 
 // possible cli options, and their default values
-let cliOptions = {
+var cliOptions = {
     wait: false,
     turns: 15
 };
