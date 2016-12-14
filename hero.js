@@ -35,7 +35,26 @@ The "move" function should accept two arguments that the website will be passing
 
 */
 
-// Strategy definitions
+// Some utility functions
+
+var util = {};
+
+// Simplified version of http://underscorejs.org/#min
+util.min = function (list, iteratee) {
+  var minEl = null,
+    minVal = Number.POSITIVE_INFINITY;
+  for (var i=0; i < list.length; ++i) {
+    var el = list[i],
+      val = iteratee(el);
+    if (val < minVal) {
+      minVal = val;
+      minEl = el;
+    }
+  }
+  return minEl;
+};
+
+// Built-in strategy definitions
 var moves = {
     // Aggressor
     aggressor: function (gameData, helpers) {
@@ -176,11 +195,146 @@ var moves = {
     // This hero will try really hard not to die.
     coward: function (gameData, helpers) {
         return helpers.findNearestHealthWell(gameData);
-    }
+    },
+
+    custom: {}
 };
 
+// Custom strategy definitions
+
+// "Balanced" strategy:
+// Follow a set of somewhat reasonable rules:
+
+// if there are adjacent enemies
+//   if there's an adjacent well, I can't kill an adjacent enemy this turn, and
+//   health <= minHealth
+//     go to the well
+//   else
+//     attack the weakest adjacent enemy
+// if health <= minHealth
+//   go to closest well with minimal nearby enemies
+// if there's an adjacent ally with health <= minHealth
+//   heal the weakest such ally
+// if there's a vulnerable enemy 2 steps away
+//   go to the weakest such enemy
+// if there's a non-team mine to go to
+//   go to the closest non-team mine with minimal nearby enemies
+// else
+//   go to the closest well with minimal nearby enemies
+
+moves.custom.balanced = function (gameData, helpers) {
+  // "m-distance" is Manhattan distance
+  // "p-distance" is shortest path distance
+
+  // health threshold for running to a well or an adjacent ally to be healed
+  const minHealth = 70,
+  // m-distance for counting "nearby" enemies
+    maxNearbyDist = 2;
+
+  var hero = gameData.activeHero,
+      board = gameData.board;
+  var dft = hero.distanceFromTop;
+  var dfl = hero.distanceFromLeft;
+
+  var adjEnemiesA = helpers.tilesOnManhattanCircle(board, hero, 1).filter(
+    function (t) {
+      return helpers.enemyB(gameData, t);
+    }
+  );
+  var adjWellsA = helpers.tilesOnManhattanCircle(board, hero, 1).filter(
+    function (t) {
+      return helpers.wellB(gameData, t);
+    }
+  );
+  var adjAlliesA = helpers.tilesOnManhattanCircle(board, hero, 1).filter(
+    function (t) {
+      return helpers.allyB(gameData, t);
+    }
+  );
+
+  if (adjEnemiesA.length > 0) {
+    var weakestAdjEnemy = util.min(adjEnemiesA, function (t) {
+      return t.health;
+    });
+    if (adjWellsA.length > 0 && weakestAdjEnemy.health > 30 && 
+        hero.health <= minHealth) {
+      console.log('Going to an adjacent well.');
+      return helpers.findNearestHealthWell(gameData);
+    } else {
+      console.log('Attack!');
+      return helpers.findTile(gameData, weakestAdjEnemy);
+    }
+  }
+
+  var minEnemiesWellDir = helpers.findNearestTileWithMinEnemies(
+    gameData, 
+    maxNearbyDist,
+    function (t) {
+      return helpers.wellB(gameData, t);
+    }
+  );
+
+  if (hero.health <= minHealth) {
+    console.log('I need health! Finding a well...');
+    return minEnemiesWellDir;
+  }
+
+  if (adjAlliesA.length > 0) {
+    var weakestAdjAlly = util.min(adjAlliesA, function (t) {
+      return t.health;
+    });
+    if (weakestAdjAlly.health <= minHealth) {
+      console.log('Be healed!');
+      return helpers.findTile(gameData, weakestAdjAlly);
+    }
+  }
+
+  var pDist2Enemies = helpers.tilesOnPathCircle(board, hero, 2).filter(
+    function (t) {
+      return helpers.vulnerableEnemyB(gameData, t);
+    }
+  );
+  if (pDist2Enemies.length > 0) {
+    var weakestpDist2Enemy = util.min(pDist2Enemies, function (t) {
+      return t.health;
+    });
+    console.log('I\'m coming for you!');
+    return helpers.findTile(gameData, weakestpDist2Enemy);
+  }
+
+  var minEnemiesNonTeamMineDir = helpers.findNearestTileWithMinEnemies(
+    gameData, 
+    maxNearbyDist,
+    function (t) {
+      return helpers.nonTeamMineB(gameData, t);
+    }
+  );
+
+  if (minEnemiesNonTeamMineDir ) {
+    console.log('Going mining.');
+    return minEnemiesNonTeamMineDir;
+  } else {
+    console.log('Yawn. I\'ll head to a well.');
+    return minEnemiesWellDir;
+  }
+
+};
+
+// "Extravert" strategy:
+// * move to closest ally; if already close, attack any close enemies or heal
+// * move randomly sometimes to avoid getting stuck
+// TODO
+moves.custom.extravert = null;
+
+// "Optimal" strategy:
+// formally classify this game and implement best known strategy, e.g. minimax
+// TODO
+moves.custom.optimal = null;
+
+
 // Set our hero's strategy
-var move =  moves.aggressor;
+var move =  moves.custom.balanced;
 
 // Export the move function here
 module.exports = move;
+

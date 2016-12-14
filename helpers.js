@@ -246,4 +246,285 @@ helpers.findNearestTeamMember = function (gameData) {
     return pathInfoObject.direction;
 };
 
+// Some utility functions
+
+var util = {};
+
+// Simplified version of http://underscorejs.org/#intersection
+util.intersect = function (a, b) {
+    return a.filter(function (e) {
+        if (b.indexOf(e) !== -1) {
+          return true;
+        } else {
+          return false;
+        }
+    });
+};
+// Simplified version of http://underscorejs.org/#difference
+util.diff = function (a, b) {
+    return a.filter(function (e) {
+        if (b.indexOf(e) === -1) {
+          return true;
+        } else {
+          return false;
+        }
+    });
+};
+
+// Custom helpers
+
+/**
+ * Get an array of all tiles at or below a given Manhattan distance from a tile
+ *
+ * @param {Object} board the game board
+ * @param {Object} center the tile at the center of the circle
+ * @param {number} radius the radius of the circle
+ * @return {Object[]} the set of tiles whose Manhattan distance to center is <=
+ *  radius
+ */
+helpers.tilesInManhattanCircle = function (board, center, radius) {
+  var dft = center.distanceFromTop,
+      dfl = center.distanceFromLeft;
+  var ret = [];
+  for (var i = dft - radius; i <= dft + radius; ++i) {
+    for (var j = dfl - radius; j <= dfl + radius; ++j) {
+      if (Math.abs(i - dft) + Math.abs(j - dfl) > radius) {
+        continue;
+      }
+      if (!helpers.validCoordinates(board, i, j)) {
+        continue;
+      }
+      ret.push(board.tiles[i][j]);
+    }
+  }
+  return ret;
+};
+
+/**
+ * Get an array of all tiles at a given Manhattan distance from a tile
+ *
+ * @param {Object} board the game board
+ * @param {Object} center the tile at the center of the circle
+ * @param {number} radius the radius of the circle
+ * @return {Object[]} the set of tiles whose Manhattan distance to center is radius
+ */
+helpers.tilesOnManhattanCircle = function (board, center, radius) {
+  return util.diff(
+      helpers.tilesInManhattanCircle(board, center, radius),
+      helpers.tilesInManhattanCircle(board, center, radius - 1)
+  );
+};
+
+helpers.tilesInPathCircle = function (board, center, radius) {
+  var ret = [];
+  if (radius < 0) {
+    return ret;
+  }
+
+  // BFS queue
+  var queue = [];
+
+  // Keeps track of places the center has been for constant time lookup
+  // later
+  var visited = {};
+
+  // center's coordinates
+  var dft = center.distanceFromTop;
+  var dfl = center.distanceFromLeft;
+
+  // Stores the coordinates and distance of a node (tile)
+  var nodeInfo = [dft, dfl, 0];
+
+  ret.push(center);
+  if (radius === 0) {
+    return ret;
+  }
+
+  //Just a unique way of storing each location we've visited
+  visited[dft + '|' + dfl] = true;
+  // Push the starting tile on to the queue
+  queue.push(nodeInfo);
+
+  while (queue.length > 0) {
+
+    // Shift off first item in queue
+    // The distance to this node is < radius
+    nodeInfo = queue.shift();
+
+    // Reset the coordinates to the shifted object's coordinates
+    dft = nodeInfo[0];
+    dfl = nodeInfo[1];
+
+    // Loop through cardinal directions
+    var directions = ['North', 'East', 'South', 'West'];
+    for (var i = 0; i < directions.length; i++) {
+
+      // For each of the cardinal directions get the next tile...
+      var direction = directions[i];
+
+      var distance = nodeInfo[2] + 1;
+
+      // ...Use the getTileNearby helper method to do this
+      var nextTile = helpers.getTileNearby(board, dft, dfl, direction);
+
+      // If nextTile is a valid location to move...
+      if (nextTile) {
+
+        // Assign a key variable the nextTile's coordinates to put into our
+        // visited object later
+        var key = nextTile.distanceFromTop + '|' + nextTile.distanceFromLeft;
+
+        // If we have visited this tile before
+        if (visited.hasOwnProperty(key)) {
+
+          //Do nothing--this tile has already been visited
+
+        // if the tile is occupied, add it to ret
+        } else if (nextTile.type !== 'Unoccupied') {
+
+          ret.push(nextTile);
+          // Give the visited object another key with the value we stored
+          // earlier
+          visited[key] = true;
+
+        // If the tile is unoccupied, then we need to push it into our queue
+        // TODO: make sure tombstones are 'Unoccupied'
+        } else if (nextTile.type === 'Unoccupied') {
+          if (distance < radius) {
+            queue.push([nextTile.distanceFromTop, nextTile.distanceFromLeft,
+                       distance]);
+          }
+
+          ret.push(nextTile);
+          // Give the visited object another key with the value we stored
+          // earlier
+          visited[key] = true;
+        }
+      }
+    }
+  }
+
+  return ret;
+};
+
+helpers.tilesOnPathCircle = function (board, center, radius) {
+  return util.diff(
+    helpers.tilesInPathCircle(board, center, radius),
+    helpers.tilesInPathCircle(board, center, radius - 1)
+  );
+};
+
+helpers.numNearbyEnemies = function (gameData, origin, maxMDist) {
+  var board = gameData.board;
+  return helpers.tilesInManhattanCircle(board, origin, maxMDist).filter(
+    function (t) {
+      return helpers.enemyB(gameData, t);
+    }
+  ).length;
+};
+
+// maxMDist is the max m-distance an enemy can be from a tile to be "nearby" to
+// it
+helpers.findNearestTileWithMinEnemies = function (gameData, maxMDist,
+  selector) {
+  var hero = gameData.activeHero,
+      board = gameData.board;
+  // the accessible tiles that satisfy selector with minimal nearby enemies
+  var candidateTiles = [];
+  // the number of enemies nearby a candidate tile
+  var minEnemies = Number.POSITIVE_INFINITY;
+
+  var allAccessibleCells = helpers.tilesInPathCircle(board, hero,
+    Number.POSITIVE_INFINITY);
+  allAccessibleCells.filter(selector).forEach(function (t) {
+    // the number of enemies nearby to t
+    var numEnemies = helpers.numNearbyEnemies(gameData, t, maxMDist);
+    if (numEnemies === minEnemies) {
+      candidateTiles.push(t);
+    } else if (numEnemies < minEnemies) {
+      minEnemies = numEnemies;
+      candidateTiles = [t];
+    }
+  });
+
+  // the path to the nearest tile in candidateTiles
+  var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(
+    board,
+    hero,
+    // searchTile is in candidateTiles
+    function (t) {
+      return candidateTiles.indexOf(t) >= 0;
+    }
+  );
+
+  return pathInfoObject.direction;
+};
+
+helpers.allyB = function (gameData, tile) {
+  var hero = gameData.activeHero;
+  return tile.type === 'Hero' && tile.team === hero.team;
+};
+
+helpers.enemyB = function (gameData, tile) {
+  var hero = gameData.activeHero;
+  return tile.type === 'Hero' && tile.team !== hero.team;
+};
+
+helpers.wellB = function (gameData, tile) {
+  return tile.type === 'HealthWell';
+};
+
+helpers.nonTeamMineB = function (gameData, tile) {
+  var hero = gameData.activeHero;
+
+  if (tile.type === 'DiamondMine') {
+    if (tile.owner) {
+      return tile.owner.team !== hero.team;
+    } else {
+      return true;
+    }
+  } else {
+    return false;
+  }
+};
+
+helpers.vulnerableEnemyB = function (gameData, tile) {
+  var hero = gameData.activeHero,
+      board = gameData.board;
+
+  if (!helpers.enemyB(gameData, tile)) {
+    return false;
+  }
+
+  // no nearby well
+  var nearbyWellB = helpers.tilesInPathCircle(board, tile, 2).some(
+    function (t) {
+      return helpers.wellB(gameData, t);
+    }
+  );
+  if (nearbyWellB) {
+    return false;
+  }
+
+  // no other enemies nearby to both tile and hero
+  var nearbyEnemies = util.intersect(
+    helpers.tilesInPathCircle(board, hero, 2),
+    helpers.tilesInPathCircle(board, tile, 2)
+  ).filter(function (t) {
+    return helpers.enemyB(gameData, t);
+  });
+  if (nearbyEnemies.length > 1) {
+    return false;
+  }
+
+  // our health difference is at least 20
+  if (tile.health <= hero.health - 20) {
+    return true;
+  } else {
+    return false;
+  }
+
+};
+
 module.exports = helpers;
+
