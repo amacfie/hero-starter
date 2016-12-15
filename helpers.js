@@ -163,6 +163,20 @@ helpers.findNearestNonTeamDiamondMine = function (gameData) {
   return pathInfoObject.direction;
 };
 
+// Returns the direction of the tile
+helpers.findTile = function(gameData, tile) {
+  var hero = gameData.activeHero,
+      board = gameData.board;
+  var pathInfoObject = helpers.findNearestObjectDirectionAndDistance(
+    board,
+    hero,
+    function (searchTile) {
+      return searchTile === tile;
+    }
+  );
+  return pathInfoObject.direction;
+};
+
 // Returns the nearest unowned diamond mine or false, if there are no diamond mines
 helpers.findNearestUnownedDiamondMine = function (gameData) {
   var hero = gameData.activeHero;
