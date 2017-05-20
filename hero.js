@@ -241,12 +241,7 @@ moves.custom.balanced = function (gameData, helpers) {
       return helpers.enemyB(gameData, t);
     }
   );
-  var adjWellsA = helpers.tilesOnManhattanCircle(board, hero, 1).filter(
-    function (t) {
-      return helpers.wellB(gameData, t);
-    }
-  );
-  var nearWellsA = helpers.tilesOnManhattanCircle(board, hero, 2).filter(
+  var nearWellsA = helpers.tilesInPathCircle(board, hero, 2).filter(
     function (t) {
       return helpers.wellB(gameData, t);
     }
