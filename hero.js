@@ -205,16 +205,23 @@ var moves = {
 // "Balanced" strategy:
 // Follow a set of somewhat reasonable rules:
 
+// "adjacent stuff"
+// if there's an adjacent well and health <= 70
+//   go to nearest well
 // if there are adjacent enemies
-//   if there's a nearby well, I can't kill an adjacent enemy this turn, and
-//   health <= minHealth
+//   if i can kill an adjacent enemy this turn
+//     kill adjacent enemy
+//   if there's a nearby well, and health <= 70
 //     go to the well
-//   else
-//     attack the weakest adjacent enemy
-// if there's an adjacent ally with health <= minHealth
+//   if there's an adjacent ally with health <= 60
+//     heal that ally
+//   attack the weakest adjacent enemy
+// if there's an adjacent ally with health <= 60
 //   heal the weakest such ally
+// "nearby stuff"
 // if there's a vulnerable enemy 2 steps away
 //   go to the weakest such enemy
+// "far stuff"
 // if health <= minHealth
 //   go to closest well with minimal nearby enemies
 // if there's a non-team mine to go to
@@ -241,6 +248,11 @@ moves.custom.balanced = function (gameData, helpers) {
       return helpers.enemyB(gameData, t);
     }
   );
+  var adjWellsA = helpers.tilesOnManhattanCircle(board, hero, 1).filter(
+    function (t) {
+      return helpers.wellB(gameData, t);
+    }
+  );
   var nearWellsA = helpers.tilesInPathCircle(board, hero, 2).filter(
     function (t) {
       return helpers.wellB(gameData, t);
@@ -252,25 +264,40 @@ moves.custom.balanced = function (gameData, helpers) {
     }
   );
 
+  if (adjWellsA.length > 0 && hero.health <= 70) {
+    return helpers.findNearestHealthWell(gameData);
+  }
   if (adjEnemiesA.length > 0) {
     var weakestAdjEnemy = util.min(adjEnemiesA, function (t) {
       return t.health;
     });
-    if (nearWellsA.length > 0 && weakestAdjEnemy.health > 30 &&
-        hero.health <= minHealth) {
-      console.log('Going to a nearby well.');
-      return helpers.findNearestHealthWell(gameData);
-    } else {
-      console.log('Attack!');
+    if (weakestAdjEnemy.health <= 30) {
       return helpers.findTile(gameData, weakestAdjEnemy);
     }
+    if (nearWellsA.length > 0 && hero.health <= 70) {
+      console.log('Going to a nearby well.');
+      return helpers.findNearestHealthWell(gameData);
+    }
+
+    if (adjAlliesA.length > 0) {
+      var weakestAdjAlly = util.min(adjAlliesA, function (t) {
+        return t.health;
+      });
+      if (weakestAdjAlly.health <= 60) {
+        console.log('Be healed!');
+        return helpers.findTile(gameData, weakestAdjAlly);
+      }
+    }
+
+    console.log('Attack!');
+    return helpers.findTile(gameData, weakestAdjEnemy);
   }
 
   if (adjAlliesA.length > 0) {
     var weakestAdjAlly = util.min(adjAlliesA, function (t) {
       return t.health;
     });
-    if (weakestAdjAlly.health <= minHealth) {
+    if (weakestAdjAlly.health <= 60) {
       console.log('Be healed!');
       return helpers.findTile(gameData, weakestAdjAlly);
     }
@@ -310,7 +337,7 @@ moves.custom.balanced = function (gameData, helpers) {
     }
   );
 
-  if (minEnemiesNonTeamMineDir ) {
+  if (minEnemiesNonTeamMineDir) {
     console.log('Going mining.');
     return minEnemiesNonTeamMineDir;
   } else {
