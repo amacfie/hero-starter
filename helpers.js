@@ -510,16 +510,6 @@ helpers.vulnerableEnemyB = function (gameData, tile) {
     return false;
   }
 
-  // no nearby well
-  var nearbyWellB = helpers.tilesInPathCircle(board, tile, 2).some(
-    function (t) {
-      return helpers.wellB(gameData, t);
-    }
-  );
-  if (nearbyWellB) {
-    return false;
-  }
-
   // no other enemies nearby to both tile and hero
   var nearbyEnemies = util.intersect(
     helpers.tilesInPathCircle(board, hero, 2),
@@ -528,6 +518,20 @@ helpers.vulnerableEnemyB = function (gameData, tile) {
     return helpers.enemyB(gameData, t);
   });
   if (nearbyEnemies.length > 1) {
+    return false;
+  }
+
+  if (tile.health <= 20) {
+    return true;
+  }
+
+  // no nearby well
+  var nearbyWellB = helpers.tilesInPathCircle(board, tile, 2).some(
+    function (t) {
+      return helpers.wellB(gameData, t);
+    }
+  );
+  if (nearbyWellB) {
     return false;
   }
 
